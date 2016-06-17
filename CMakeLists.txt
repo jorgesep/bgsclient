@@ -26,8 +26,11 @@ message(STATUS "OpenCV library status:")
 message(STATUS "    version: ${OpenCV_VERSION}")
 message(STATUS "    libraries: ${OpenCV_LIBS}")
 message(STATUS "    include path: ${OpenCV_INCLUDE_DIRS}")
+message(STATUS "========================================")
 message(STATUS "    HOME ENV: $ENV{HOME}")
-message(STATUS "    HOME ENV: ${PROJECT_SOURCE_DIR}")
+message(STATUS "    PROJECT DIR: ${PROJECT_SOURCE_DIR}")
+message(STATUS "    PROJECT BIN: ${bgsclient_BINARY_DIR}")
+message(STATUS "    PROJECT SRC: ${bgsclient_SOURCE_DIR}")
 
 if(${OpenCV_VERSION} VERSION_EQUAL 3 OR ${OpenCV_VERSION} VERSION_GREATER 3)
   message (FATAL_ERROR "OpenCV version is not compatible: ${OpenCV_VERSION}")
@@ -39,7 +42,7 @@ endif()
 
 file(GLOB imbs ${PROJECT_SOURCE_DIR}/src/Main.cpp)
 FILE ( GLOB LIBS ${PROJECT_SOURCE_DIR}/src/IMBSBuilder.cpp ${PROJECT_SOURCE_DIR}/src/IMBSBuilder.h )
-FILE ( GLOB SCRIPTS ${PROJECT_SOURCE_DIR}/*.py ${PROJECT_SOURCE_DIR}/*.sh )
+FILE ( GLOB SCRIPTS ${PROJECT_SOURCE_DIR}/src/*.py ${PROJECT_SOURCE_DIR}/src/*.sh )
 
 # Find custom library location of bgs and bgslibrary 
 set(LOCAL_PATH "$ENV{HOME}/local")
@@ -64,7 +67,8 @@ target_link_libraries(bgs_imbs ${BASE_SYSTEM} IMBSBuilder ${FRAME_READER} ${IMAG
 set_property(TARGET bgs_imbs PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
 
 #file(COPY ${PROJECT_SOURCE_DIR}/../config DESTINATION ${BGS_BINARY_DIR}/)
-#file(COPY ${SCRIPTS} DESTINATION ${BGS_BINARY_DIR}/bin/)
+file(COPY ${SCRIPTS} DESTINATION ${bgsclient_BINARY_DIR}/bin/)
+INSTALL(PROGRAMS ${SCRIPTS} DESTINATION bin)
 
 INSTALL(TARGETS bgs_imbs IMBSBuilder 
   RUNTIME DESTINATION bin COMPONENT app
