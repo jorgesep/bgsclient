@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Require a path where image sequences are located
-MAIN_PATH="Path to some specific directory"
+MAIN_PATH="$HOME"
 
 # Path to videos
 SEQ_PATH="${MAIN_PATH}/Activity-AVIfiles"
@@ -14,7 +14,7 @@ MEASURES="${MAIN_PATH}/results/measures"
 
 # Algorithm name: 'sagmm' 'mog2' 'ucv'
 #ALGORITHMS="sagmm mog2 ucv_linear ucv_staircase"
-ALGORITHMS="ibms"
+ALGORITHMS="imbs"
 
 # Activities
 ACTIONS="Kick Punch RunStop ShotGunCollapse WalkTurnBack"
@@ -32,7 +32,8 @@ pm_args=""
 
 # Special tag
 #TAG="AVI_MORPH"
-TAG="AVI"
+#TAG="AVI"
+TAG=""
 
 ###### From this point nothing should change .. 
 
@@ -164,8 +165,8 @@ set_names() {
 
     # input parameters
     input_name=`echo ${ALGORITHM_NAME} | tr '[:lower:]' '[:upper:]'`
-    loop1="config/${input_name}_LearningRate.txt"
-    loop2="config/${input_name}_Threshold.txt"
+    loop1="config/${input_name}_FgThreshold.txt"
+    loop2="config/${input_name}_AssociationThreshold.txt"
     
     # get name of parameters (e.g: Alpha, Threshold)
     _tag_1=`head -1 $loop1 | sed -n 's|<\([a-zA-Z]*\)>\(.*\)</[a-zA-Z]*>|\1|p'`
@@ -191,15 +192,13 @@ set_names() {
 
     # Binary command: 'bgs', 'bgs_framework', 'testUCV'
     #Type of method: 1:linear 2:staircase 3:gmm normal
+    ext_args="--show=false"
     if   [ "$ALGORITHM_NAME" == "sagmm" ]; then
         cmd="sagmm_bgs"
-        ext_args="--show=false"
     elif [ "$ALGORITHM_NAME" == "mog2" ]; then
         cmd="bgs_framework"
-        ext_args="--show=false"
     elif [ "$ALGORITHM_NAME" == "np" ]; then
         cmd="npbgs"
-        ext_args="--show=false"
     elif [ "$ALGORITHM_NAME" == "ucv_linear" ]; then
         cmd="./bin/testUCV"
         ext_args="--function=1"
@@ -208,7 +207,6 @@ set_names() {
         ext_args="--function=2"
     elif [ "$ALGORITHM_NAME" == "imbs" ]; then
         cmd="bgs_imbs"
-        ext_args="--show=false -r ${init_gt},${end_gt}"
     fi
 
 }
@@ -348,7 +346,12 @@ do
                 # Sequence directory
                 sequence="${SEQ_PATH}/${action}/${action}-${cam}-${actor}.avi"
                 #sequence="${SEQ_PATH}/${action}/${actor}/${cam}"
+
                 args="-i $sequence ${ext_args}"
+                if [ "$ALGORITHM_NAME" == "imbs" ]; then
+                    range_args=$(eval "echo \$$(echo GT_${name})| sed 's/ /,/g'")
+                    args="-f ${sequence} ${ext_args} -r ${range_args}"
+                fi
 
                 hidden_name='.running_'${algorithm}'_'${name}
 
@@ -383,7 +386,7 @@ do
                             mv config.tmp ${xmlfile}
 
                             $cmd $args
-                            sleep 0.1
+                            #sleep 0.1
                         done
 
                         # Verify this started from previous execution for recovering _list_2.
