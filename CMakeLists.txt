@@ -40,8 +40,10 @@ if(${OpenCV_VERSION} VERSION_LESS 2.3.1)
   message (FATAL_ERROR "OpenCV version is not compatible: ${OpenCV_VERSION}")
 endif()
 
-file(GLOB imbs ${PROJECT_SOURCE_DIR}/src/Main.cpp)
+file (GLOB imbs ${PROJECT_SOURCE_DIR}/src/Main.cpp)
+file (GLOB t2fgmm ${PROJECT_SOURCE_DIR}/src/T2FGMM_Main.cpp)
 FILE ( GLOB LIBS ${PROJECT_SOURCE_DIR}/src/IMBSBuilder.cpp ${PROJECT_SOURCE_DIR}/src/IMBSBuilder.h )
+FILE ( GLOB t2fgmmlibs ${PROJECT_SOURCE_DIR}/src/T2FGMM_UMBuilder.cpp ${PROJECT_SOURCE_DIR}/src/T2FGMM_UMBuilder.h )
 FILE ( GLOB SCRIPTS ${PROJECT_SOURCE_DIR}/src/*.py ${PROJECT_SOURCE_DIR}/src/*.sh )
 
 # Find custom library location of bgs and bgslibrary 
@@ -65,6 +67,20 @@ set_property(TARGET IMBSBuilder PROPERTY LIBRARY_OUTPUT_DIRECTORY ${bgsclient_BI
 add_executable(bgs_imbs ${imbs})
 target_link_libraries(bgs_imbs ${BASE_SYSTEM} IMBSBuilder ${FRAME_READER} ${IMAGE_UTILS} ${OpenCV_LIBS})
 set_property(TARGET bgs_imbs PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
+
+#ADD_LIBRARY( T2FGMM SHARED ${t2fgmmlibs})
+#target_link_libraries( T2FGMM  ${BGS_LIB} ${UTILS} ${OpenCV_LIBS} ${Boost_LIBRARIES} ${TIMER} )
+#set_property(TARGET T2FGMM PROPERTY LIBRARY_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/lib)
+
+#add_executable(bgs_t2fgmm ${t2fgmm})
+#target_link_libraries(bgs_t2fgmm ${BASE_SYSTEM} T2FGMM ${FRAME_READER} ${IMAGE_UTILS} ${OpenCV_LIBS})
+#set_property(TARGET bgs_t2fgmm PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
+
+add_executable(t2fgmm ${t2fgmm} ${t2fgmmlibs})
+target_link_libraries(t2fgmm ${BASE_SYSTEM} ${BGS_LIB} ${UTILS} ${Boost_LIBRARIES} ${TIMER} ${FRAME_READER} ${IMAGE_UTILS} ${OpenCV_LIBS})
+set_property(TARGET t2fgmm PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
+
+
 
 #file(COPY ${PROJECT_SOURCE_DIR}/../config DESTINATION ${BGS_BINARY_DIR}/)
 file(COPY ${SCRIPTS} DESTINATION ${bgsclient_BINARY_DIR}/bin/)
