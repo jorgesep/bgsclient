@@ -14,7 +14,7 @@ MEASURES="${MAIN_PATH}/results/measures"
 
 # Algorithm name: 'sagmm' 'mog2' 'ucv'
 #ALGORITHMS="sagmm mog2 ucv_linear ucv_staircase"
-ALGORITHMS="imbs"
+ALGORITHMS="t2fmrf_um"
 
 # Activities
 ACTIONS="Kick Punch RunStop ShotGunCollapse WalkTurnBack"
@@ -165,8 +165,8 @@ set_names() {
 
     # input parameters
     input_name=`echo ${ALGORITHM_NAME} | tr '[:lower:]' '[:upper:]'`
-    loop1="config/${input_name}_FgThreshold.txt"
-    loop2="config/${input_name}_AssociationThreshold.txt"
+    loop1="config/${input_name}_Threshold.txt"
+    loop2="config/${input_name}_Alpha.txt"
     
     # get name of parameters (e.g: Alpha, Threshold)
     _tag_1=`head -1 $loop1 | sed -n 's|<\([a-zA-Z]*\)>\(.*\)</[a-zA-Z]*>|\1|p'`
@@ -207,6 +207,10 @@ set_names() {
         ext_args="--function=2"
     elif [ "$ALGORITHM_NAME" == "imbs" ]; then
         cmd="bgs_imbs"
+    elif [ "$ALGORITHM_NAME" == "t2fgmm_um" ]; then
+        cmd="t2fgmm"
+    elif [ "$ALGORITHM_NAME" == "t2fmrf_um" ]; then
+        cmd="t2fmrf"
     fi
 
 }
@@ -348,8 +352,11 @@ do
                 #sequence="${SEQ_PATH}/${action}/${actor}/${cam}"
 
                 args="-i $sequence ${ext_args}"
+                range_args=$(eval "echo \$$(echo GT_${name})| sed 's/ /,/g'")
+
                 if [ "$ALGORITHM_NAME" == "imbs" ]; then
-                    range_args=$(eval "echo \$$(echo GT_${name})| sed 's/ /,/g'")
+                    args="-f ${sequence} ${ext_args} -r ${range_args}"
+                elif [ "$ALGORITHM_NAME" == "t2fgmm_um" ]; then
                     args="-f ${sequence} ${ext_args} -r ${range_args}"
                 fi
 
