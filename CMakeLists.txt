@@ -45,6 +45,8 @@ file (GLOB t2fgmm ${PROJECT_SOURCE_DIR}/src/T2FGMM_Main.cpp)
 FILE ( GLOB LIBS ${PROJECT_SOURCE_DIR}/src/IMBSBuilder.cpp ${PROJECT_SOURCE_DIR}/src/IMBSBuilder.h )
 FILE ( GLOB t2fgmmlibs ${PROJECT_SOURCE_DIR}/src/T2FGMM_UMBuilder.cpp ${PROJECT_SOURCE_DIR}/src/T2FGMM_UMBuilder.h )
 FILE ( GLOB SCRIPTS ${PROJECT_SOURCE_DIR}/src/*.py ${PROJECT_SOURCE_DIR}/src/*.sh )
+file (GLOB t2fmrf ${PROJECT_SOURCE_DIR}/src/T2FMRF_Main.cpp)
+FILE (GLOB t2fmrflibs ${PROJECT_SOURCE_DIR}/src/T2FMRF_UMBuilder.cpp ${PROJECT_SOURCE_DIR}/src/T2FMRF_UMBuilder.h )
 
 # Find custom library location of bgs and bgslibrary 
 set(LOCAL_PATH "$ENV{HOME}/local")
@@ -68,25 +70,20 @@ add_executable(bgs_imbs ${imbs})
 target_link_libraries(bgs_imbs ${BASE_SYSTEM} IMBSBuilder ${FRAME_READER} ${IMAGE_UTILS} ${OpenCV_LIBS})
 set_property(TARGET bgs_imbs PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
 
-#ADD_LIBRARY( T2FGMM SHARED ${t2fgmmlibs})
-#target_link_libraries( T2FGMM  ${BGS_LIB} ${UTILS} ${OpenCV_LIBS} ${Boost_LIBRARIES} ${TIMER} )
-#set_property(TARGET T2FGMM PROPERTY LIBRARY_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/lib)
+add_executable(t2fmrf ${t2fmrf} ${t2fmrflibs})
+target_link_libraries(t2fmrf ${BASE_SYSTEM} ${BGS_LIB} ${UTILS} ${Boost_LIBRARIES} ${TIMER} ${FRAME_READER} ${IMAGE_UTILS} ${OpenCV_LIBS})
+set_property(TARGET t2fmrf PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
 
-#add_executable(bgs_t2fgmm ${t2fgmm})
-#target_link_libraries(bgs_t2fgmm ${BASE_SYSTEM} T2FGMM ${FRAME_READER} ${IMAGE_UTILS} ${OpenCV_LIBS})
-#set_property(TARGET bgs_t2fgmm PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
 
 add_executable(t2fgmm ${t2fgmm} ${t2fgmmlibs})
 target_link_libraries(t2fgmm ${BASE_SYSTEM} ${BGS_LIB} ${UTILS} ${Boost_LIBRARIES} ${TIMER} ${FRAME_READER} ${IMAGE_UTILS} ${OpenCV_LIBS})
 set_property(TARGET t2fgmm PROPERTY RUNTIME_OUTPUT_DIRECTORY ${bgsclient_BINARY_DIR}/bin)
 
-
-
 #file(COPY ${PROJECT_SOURCE_DIR}/../config DESTINATION ${BGS_BINARY_DIR}/)
 file(COPY ${SCRIPTS} DESTINATION ${bgsclient_BINARY_DIR}/bin/)
 INSTALL(PROGRAMS ${SCRIPTS} DESTINATION bin)
 
-INSTALL(TARGETS bgs_imbs IMBSBuilder t2fgmm
+INSTALL(TARGETS bgs_imbs IMBSBuilder t2fgmm t2fmrf
   RUNTIME DESTINATION bin COMPONENT app
   LIBRARY DESTINATION lib COMPONENT runtime
   ARCHIVE DESTINATION lib COMPONENT runtime
