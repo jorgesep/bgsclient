@@ -23,6 +23,7 @@
 #include <vector>
 #include <fstream>
 #include <algorithm>
+#include <thread>
 
 #include "BGSSystem.h"
 #include "T2FGMM_UMBuilder.h"
@@ -38,6 +39,50 @@ using namespace seq;
 using namespace bgs;
 
 const std::string ALGORITHM_NAME = "T2FGMM_UM";
+const int NUM_THREADS = 16;
+std::mutex mtx;
+
+struct MainParams {
+    MainParams(string an, string in, string pp, string mr, 
+               bool eg, bool sm, int r, int c, int f, int d)
+        :algName(an), fileName(in),pinPoint(pp), maskRange(mr),pin(0,0), 
+         startFrameMask(0),endFrameMask(f),
+         enableGui(eg), enableMask(sm), row(r), col(c), nframes(f), delay(d)
+    {
+        // Define a pin point location on a display window
+        if ( !pinPoint.empty() ) {
+            pin = stringToPoint(pinPoint);
+            pin.x = pin.x > col ?  col: pin.x;
+            pin.y = pin.y > row ?  row: pin.y;
+        }
+
+        if (!maskRange.empty()) {
+            Point pf;
+            pf = stringToPoint(maskRange);
+            startFrameMask = pf.x;
+            endFrameMask   = pf.y;
+        }
+
+        maskPath    = algName + "_mask";
+    };
+    
+   const string algName; // algorithm name
+   string configParams;
+   string fileName; // video filename
+   string pinPoint; //disply spot in video sequence
+   string maskRange; // init and end mask frame to save
+   string maskPath;
+   Point  pin;
+   int    startFrameMask;
+   int    endFrameMask;
+   bool   enableGui; // display video
+   bool   enableMask; // save generated masks
+   int row;
+   int col;
+   int nframes;
+   int delay;
+} ;
+
 
 const char* keys =
 {
@@ -60,20 +105,168 @@ void display_message()
     cout << "------------------------------------------------------------" << endl <<endl;
 }
 
+void save_foreground_mask(const MainParams p, int cnt, InputArray im)
+{
+    // Save foreground images
+    if (p.enableMask && cnt >= p.startFrameMask && cnt <= p.endFrameMask) {
+
+        Mat Mask = im.getMat();
+
+        stringstream str;
+        vector<int> compression_params;
+        compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+        compression_params.push_back(9);
+
+        try {
+            str << p.maskPath << "/" <<  cnt << ".png";
+            imwrite(str.str(), Mask, compression_params);
+        }
+        catch (runtime_error& ex) {
+            cout << "Exception converting image to PNG format: " << ex.what() << endl;
+        }
+        catch (...) {
+            cout << "Unknown Exception converting image to PNG format: " << endl;
+        }
+    }
+}
+ 
+void save_pixel_values_tofile(const MainParams p, InputArray im, std::ofstream& file)
+{
+    // Save pixel information in a local file
+    if (!p.pinPoint.empty()) {
+
+        Mat Img = im.getMat();
+
+        stringstream msgPoint;
+        msgPoint  << (int)Img.at<Vec3b>(p.pin)[0] << " "
+                  << (int)Img.at<Vec3b>(p.pin)[1] << " "
+                  << (int)Img.at<Vec3b>(p.pin)[2] ;
+
+        //define outfile to save BGR pixel values
+        if (!file.is_open()){
+            stringstream name("");
+            name << "point_" << p.pin.x << "_" << p.pin.y << ".txt";
+            file.open(name.str().c_str());
+        }
+        file<< msgPoint.str() << endl;
+    }
+}
+ 
+
+void setup_foreground_directory(MainParams &p)
+{
+    // Create foreground directory and numbered sub-directories (alg_mask/0, alg_mask/1, ...)
+    if (p.enableMask) 
+    {
+
+        // Setup algorithm name
+        string algNameLowercase(ALGORITHM_NAME);
+        transform(ALGORITHM_NAME.begin(), 
+                  ALGORITHM_NAME.end(), 
+                  algNameLowercase.begin(),::tolower);
+
+        // Prapare mask directory
+        string _foreground_path    = algNameLowercase + "_mask";
+
+        create_foreground_directory(_foreground_path);
+
+        std::ofstream outfile;
+        stringstream param;
+
+        param << _foreground_path << "/parameters.txt" ;
+        outfile.open(param.str().c_str());
+        outfile << p.configParams;
+        outfile.close();
+        p.maskPath = _foreground_path;
+    }
+}
+
+bool display_images(MainParams &p, int cnt, InputArray im, InputArray fg)
+{
+
+    if (p.enableGui) {
+
+        Mat Img  = im.getMat();
+        Mat Mask = fg.getMat();
+        Mat Image;
+    
+        // Insert pin on the Window.
+        if (!p.pinPoint.empty()){
+            circle(Img,  p.pin,8,Scalar(0,0,254),-1,8);
+            circle(Mask, p.pin,8,Scalar(0,0,254),-1,8);
+        }
+    
+        // Invert color of Mask from black to white
+        Mat ThresholdMask, ColorMask;
+        threshold(Mask, ThresholdMask, 127, 255, 1);
+        cvtColor(ThresholdMask,ColorMask, CV_GRAY2BGR);
+    
+        DisplayImages display;
+        display.mergeImages(Img, ColorMask, Image);
+    
+        imshow(ALGORITHM_NAME, Image);
+        
+        // Stop window
+        char key=0;
+        key = (char)waitKey(p.delay);
+        if( key == 27 )
+            return false;
+    
+        // pause program in with space key
+        if ( key == 32) {
+            bool pause = true;
+            while (pause)
+            {
+                key = (char)waitKey(p.delay);
+                if (key == 32) pause = false;
+    
+                // save frame with return key
+                if (key == 13) {
+                    stringstream str;
+                    str << p.algName << "_" << cnt << "_background.png" ;
+                    imwrite( str.str()  , Img  );
+    
+                    str.str("") ;
+                    str << p.algName << "_" << cnt << "_foreground.png" ;
+                    imwrite( str.str(), ThresholdMask );
+                }
+            }
+        }
+    }
+
+    return true;
+
+
+}
+
+
+void process_images(BGSSystem* method, InputArray Img, OutputArray Mask)
+{
+    Mat CurrentFrame = Img.getMat();
+
+    //mtx.lock();
+    //std::cout << "function: process_images img[" << CurrentFrame.cols << ":" << CurrentFrame.rows << "] " << method->getConfigurationParameters()  << std::endl;
+    //mtx.unlock();
+
+    method->updateAlgorithm(CurrentFrame, Mask);
+
+
+}
 
 
 int main( int argc, char** argv )
 {
     // Setup algorithm name
     string algNameLowercase(ALGORITHM_NAME);
-    transform(ALGORITHM_NAME.begin(), ALGORITHM_NAME.end(), 
+    transform(ALGORITHM_NAME.begin(), 
+              ALGORITHM_NAME.end(), 
               algNameLowercase.begin(),::tolower);
 
     //Parse console parameters
     CommandLineParser cmd(argc, argv, keys);
 
     // Reading input parameters
-    const string inputName                = cmd.get<string>("input");
+    const string fileName                = cmd.get<string>("input");
     const bool showWindow                 = cmd.get<bool>("show");
     const string pinPoint                 = cmd.get<string>("point");
     const bool saveForegroundMask         = cmd.get<bool>("mask");
@@ -89,174 +282,115 @@ int main( int argc, char** argv )
     // Verify input name is a video file or directory with image files.
     FrameReader *input_frame;
     try {
-        input_frame = FrameReaderFactory::create_frame_reader(inputName);
+        input_frame = FrameReaderFactory::create_frame_reader(fileName);
     } catch (...) {
         cout << "Invalid file name "<< endl;
         return 0;
     }
-   
-    
-    // Algorithm Instantiate
-    BGSSystem* bgs = new BGSSystem();
-    bgs->setAlgorithm(new T2FGMM_UMBuilder(input_frame->getNumberCols(),
-                                           input_frame->getNumberRows(),
-                                           input_frame->getNChannels()   ));
-    bgs->setName(ALGORITHM_NAME);
-    bgs->loadConfigParameters();
-    bgs->initializeAlgorithm();
-    
-    int  InitFGMaskFrame=0;
-    int  EndFGMaskFrame = input_frame->getNFrames();
+ 
+    MainParams params(
+            algNameLowercase, 
+            fileName, 
+            pinPoint, 
+            rangeSaveForegroundMask,
+            showWindow, 
+            saveForegroundMask, 
+            input_frame->getNumberRows(), 
+            input_frame->getNumberCols(), 
+            input_frame->getNFrames(),
+            input_frame->getFrameDelay());
 
-    // Prapare mask directory
-    string _foreground_path    = algNameLowercase + "_mask";
-    
+
+    // Create vector with number of theads
+    ChunkImage chunk(input_frame->getNumberRows(), input_frame->getNumberCols(), NUM_THREADS);
+
+    //std::cout << "Chunk size  [" << chunk.getSubImgCol() << ":" << chunk.getSubImgRow() << "]" << std::endl;
+
+
+
+    vector<BGSSystem*> methods;
+    for (int i=0; i<NUM_THREADS; i++) {
+        // Algorithm Instantiate
+        BGSSystem* bgs = new BGSSystem();
+        bgs->setAlgorithm(new T2FGMM_UMBuilder(chunk.getSubImgCol(),
+                                               chunk.getSubImgRow(),
+                                               input_frame->getNChannels()   ));
+        bgs->setName(ALGORITHM_NAME);
+        bgs->loadConfigParameters();
+        bgs->initializeAlgorithm();
+ 
+        methods.push_back(bgs);
+        if (i == 0 )
+            params.configParams = bgs->getConfigurationParameters();
+    }
+
     // Create foreground directory and numbered sub-directories (alg_mask/0, alg_mask/1, ...)
-    if (saveForegroundMask) {
+    setup_foreground_directory(params);
 
-        create_foreground_directory(_foreground_path);
-
-        std::ofstream outfile;
-        stringstream param;
-
-        param << _foreground_path << "/parameters.txt" ;
-        outfile.open(param.str().c_str());
-        outfile << bgs->getConfigurationParameters();
-        outfile.close();
-
-        if (!rangeSaveForegroundMask.empty()) {
-            Point pf;
-            pf = stringToPoint(rangeSaveForegroundMask);
-            InitFGMaskFrame = pf.x;
-            EndFGMaskFrame  = pf.y;
-        }
-    }
-
-    Point pin(0,0);
     std::ofstream point_file;
-
-    // Define a point to be pinned on a display window
-    if ( !pinPoint.empty() ) {
-
-        pin = stringToPoint(pinPoint);
-        pin.x = pin.x > input_frame->getNumberCols() ? 
-                        input_frame->getNumberCols(): pin.x;
-        pin.y = pin.y > input_frame->getNumberRows() ? 
-                        input_frame->getNumberRows(): pin.y;
-
-    }
-
     Mat CurrentFrame;
     Mat Foreground;
     Mat Image;
    
-    int delay = input_frame->getFrameDelay();
     int cnt = 0;
+
+    std::vector<Mat> subImgs;
+    std::vector<Mat> subMask;
+    std::vector<std::thread> t;
+
+    //Initialize vector of masks
+    for (int i=0; i<NUM_THREADS; i++ ){
+        Size size(chunk.getSubImgCol(),chunk.getSubImgRow());
+        subMask.push_back(Mat(size,CV_8UC1,Scalar::all(0)));
+    }
+
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
     // main loop
     for(;;)
     {
 
         Foreground = Scalar::all(0);
-
         input_frame->getFrame(CurrentFrame);
-        
         if (CurrentFrame.empty()) break;
-    
-        bgs->updateAlgorithm(CurrentFrame, Foreground);
-        
-        // Save foreground images
-        if (saveForegroundMask && cnt >= InitFGMaskFrame && cnt <= EndFGMaskFrame) {
-            stringstream str;
-            vector<int> compression_params;
-            compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-            compression_params.push_back(9);
 
-            try {
-                str << _foreground_path << "/" <<  cnt << ".png";
-                imwrite(str.str(), Foreground, compression_params);
-            }
-            catch (runtime_error& ex) {
-                cout << "Exception converting image to PNG format: " << ex.what() << endl;
-            }
-            catch (...) {
-                cout << "Unknown Exception converting image to PNG format: " << endl;
-            }
-        }
-        
-        // Save pixel information in a local file
-        if (!pinPoint.empty()) {
+        chunk(CurrentFrame,subImgs);
 
-            stringstream msgPoint;
-            msgPoint  << (int)CurrentFrame.at<Vec3b>(pin)[0] << " "
-                      << (int)CurrentFrame.at<Vec3b>(pin)[1] << " "
-                      << (int)CurrentFrame.at<Vec3b>(pin)[2] ;
+        //Launch a group of threads
+        for (int i = 0; i < NUM_THREADS; ++i) 
+            t.push_back(std::thread(process_images,methods[i], subImgs[i], subMask[i]));
 
-            //define outfile to save BGR pixel values
-            if (!point_file.is_open()){
-                stringstream name("");
-                name << "point_" << pin.x << "_" << pin.y << ".txt";
-                point_file.open(name.str().c_str());
-            }
-
-            point_file<< msgPoint.str() << endl;
+        //Join the threads with the main thread
+        for(auto &e : t){
+            e.join();
         }
 
-        if (showWindow) {
+        t.clear();
 
-            // Insert pin on the Window.
-            if (!pinPoint.empty()){
-                circle(CurrentFrame,pin,8,Scalar(0,0,254),-1,8);
-                circle(Foreground  ,pin,8,Scalar(0,0,254),-1,8);
-            }
 
-            // Invert color of Mask from black to white
-            Mat ThresholdMask, ColorMask;
-            threshold(Foreground, ThresholdMask, 127, 255, 1);
-            cvtColor(ThresholdMask,ColorMask, CV_GRAY2BGR);
+        chunk.mergeImages(subMask,Foreground);
+        save_foreground_mask(params,cnt, Foreground);
 
-            DisplayImages display;
-            display.mergeImages(CurrentFrame, ColorMask, Image);
+        save_pixel_values_tofile(params, CurrentFrame, point_file);
 
-            imshow(ALGORITHM_NAME, Image);
-            
-            // Stop window
-            char key=0;
-            key = (char)waitKey(delay);
-            if( key == 27 )
-                break;
-
-            // pause program in with space key
-            if ( key == 32) {
-                bool pause = true;
-                while (pause)
-                {
-                    key = (char)waitKey(delay);
-                    if (key == 32) pause = false;
-
-                    // save frame with return key
-                    if (key == 13) {
-                        stringstream str;
-                        str << algNameLowercase << "_" << cnt << "_background.png" ;
-                        imwrite( str.str()  , CurrentFrame  );
-
-                        str.str("") ;
-                        str << algNameLowercase << "_" << cnt << "_foreground.png" ;
-                        imwrite( str.str(), ThresholdMask );
-                    }
-                }
-            }
-        }
-
+        if (!display_images(params, cnt, CurrentFrame, Foreground)) break;
 
         cnt +=1;
 
-        if (!showWindow && cnt > EndFGMaskFrame) break;
+        subImgs.clear();
+
+        if (!showWindow && cnt > params.endFrameMask) break;
         
     }
     
+    std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::seconds>(end - begin).count() << "[Sec]" << std::endl;
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() <<std::endl;
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count() <<std::endl;
     
-    delete bgs;
+    for (int i=0; i<NUM_THREADS; i++) {
+        delete methods[i];
+    }
     delete input_frame;
     if (point_file.is_open()) point_file.close();
 
