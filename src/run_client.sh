@@ -266,10 +266,13 @@ verify_unexpected_algorithm_stop() {
 check_aborted_execution() {
 
     hidden_file=$(ls -a1rt | grep '\.running_' | tail -1)
+
     # True if file exist
     if [ -n "$hidden_file" ]; then
-        _last_algorithm=$(echo ${hidden_file} |  sed -n 's|.*running_\([a-z]*[2]\{0,1\}_\{0,1\}[a-z]\{0,\}\)_.*Person.*|\1|p')
-        _last_action=$(   echo ${hidden_file} |  sed -n 's|.*running_\([a-z]*[2]\{0,1\}_\{0,1\}[a-z]\{0,\}\)_\([a-zA-Z]*\)_Person.*|\2|p')
+        #_last_algorithm=$(echo ${hidden_file} |  sed -n 's|.*running_\([a-z]*[2]\{0,1\}_\{0,1\}[a-z]\{0,\}\)_.*Person.*|\1|p')
+        #_last_action=$(   echo ${hidden_file} |  sed -n 's|.*running_\([a-z]*[2]\{0,1\}_\{0,1\}[a-z]\{0,\}\)_\([a-zA-Z]*\)_Person.*|\2|p')
+        _last_algorithm=$(echo ${hidden_file} | sed -n 's|.*running_\(.*\)_\([a-zA-Z]*\)_\(Person.*\)_\(Camera_[3-4]\).*|\1|p')
+        _last_action=$(echo ${hidden_file} | sed -n 's|.*running_\(.*\)_\([a-zA-Z]*\)_\(Person.*\)_\(Camera_[3-4]\).*|\2|p')
         _last_actor=$(    echo ${hidden_file} |  sed -n 's|.*running.*_\(Person[1-4]\).*|\1|p')
         _last_camera=$(   echo ${hidden_file} |  sed -n 's|.*running.*_\(Camera_[3-4]\).*|\1|p')
 
@@ -357,6 +360,8 @@ do
                 if [ "$ALGORITHM_NAME" == "imbs" ]; then
                     args="-f ${sequence} ${ext_args} -r ${range_args}"
                 elif [ "$ALGORITHM_NAME" == "t2fgmm_um" ]; then
+                    args="-f ${sequence} ${ext_args} -r ${range_args}"
+                elif [ "$ALGORITHM_NAME" == "t2fmrf_um" ]; then
                     args="-f ${sequence} ${ext_args} -r ${range_args}"
                 fi
 
